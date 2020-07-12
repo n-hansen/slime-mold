@@ -104,3 +104,8 @@ let simulation_step [h][w][a]
                     : env[h][w][a] =
   e |> step_agents |> disperse_trail
 
+let run_simulation [h][w][a]
+                   (n: i32)
+                   (e0: env[h][w][a])
+                   : env[h][w][a] =
+  loop e = e0 for _i < n do simulation_step e
