@@ -58,3 +58,24 @@ entry test_single_step_agent [h][w]
   let agent_list = build_test_env trail_map [x] [y] [ang] |> simulation_step |> (.agent_list)
   in [agent_list[0].loc.0, agent_list[0].loc.1, agent_list[0].ang |> to_deg |> r32]
 
+-- Single Step Trail Tests
+-- ==
+-- entry: test_single_step_trail
+-- input { [[0f32,0f32,0f32,0f32],
+--          [0f32,0f32,0f32,0f32],
+--          [0f32,0f32,0f32,0f32],
+--          [0f32,0f32,0f32,0f32]]
+--         1f32 1f32 0 }
+-- output { [[0.5f32,0.5f32,0.5f32,0f32],
+--           [0.5f32,0.5f32,0.5f32,0f32],
+--           [0.5f32,0.5f32,0.5f32,0f32],
+--           [0f32,0f32,0f32,0f32]] }
+
+entry test_single_step_trail [h][w]
+                             (trail_map: [h][w]f32)
+                             (x: f32)
+                             (y: f32)
+                             (ang: i32)
+                             : [h][w]f32 =
+  let e = simulation_step (build_test_env trail_map [x] [y] [ang])
+  in e.trail_map
