@@ -42,13 +42,13 @@ let loc2grid (grid_size: i32)
 
 let read_sensor [xn] [yn]
                 (p: model_params)
-                (trail_map: [xn][yn]f32)
+                (trail_map: [yn][xn]f32)
                 (x: f32, y: f32)
                 (ang: f32)
                 : f32 =
   let sx = f32.cos ang * p.sensor_offset + x |> loc2grid xn
   let sy = f32.sin ang * p.sensor_offset + y |> loc2grid yn
-  in trail_map[sx,sy]
+  in trail_map[sy,sx]
 
 let move_step (p: model_params)
               ({loc=(x: f32, y: f32),
@@ -67,7 +67,7 @@ let step_agent (p: model_params)
   let sr = read_sensor p trail_map loc (ang - p.sensor_angle)
   let stepped = if sf >= sr && sf >= sl
                 then move_step p {loc,ang}
-                else (if sr >= sf
+                else (if sr >= sl
                       then move_step p {loc, ang=ang - p.rot_angle}
                       else move_step p {loc, ang=ang + p.rot_angle})
   in (stepped, (t32 loc.0, t32 loc.1))
@@ -103,3 +103,4 @@ let simulation_step [h][w][a]
                     (e: env[h][w][a])
                     : env[h][w][a] =
   e |> step_agents |> disperse_trail
+
