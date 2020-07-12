@@ -10,7 +10,7 @@ SHELL := bash
 MAKEFLAGS += --warn-undefined-variables
 MAKEFLAGS += --no-builtin-rules
 
-.PHONY: test bench
+.PHONY: test bench venv
 
 test:
 > futhark test `fd '.*_test.fut'`
@@ -33,3 +33,14 @@ bench: bench_input build/slime_bench-c build/slime_bench-opencl
 > cat bench_input | build/slime_bench-c -t /dev/stderr  > /dev/null
 > echo 'Benchmarking OpenCL...'
 > cat bench_input | build/slime_bench-opencl -t /dev/stderr  > /dev/null
+
+requirements.txt: requirements.in
+> . venv/bin/activate
+> pip-compile requirements.in > requirements.txt
+
+venv/bin/activate: requirements.txt
+> . venv/bin/activate
+> pip-sync requirements.txt
+> touch venv/bin/activate
+
+venv: venv/bin/activate
