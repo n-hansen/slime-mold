@@ -9,8 +9,7 @@ let build_test_env [h][w][a]
                    (agent_ys: [a]f32)
                    (agent_angs: [a]i32)
                    : env[h][w][a] =
-  let model_params = { pct_pop=0
-                     , decay=0.5
+  let model_params = { decay=0.5
                      , sensor_angle=to_rad 45
                      , sensor_offset=2
                      , rot_angle=to_rad 45

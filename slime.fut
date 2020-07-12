@@ -1,6 +1,5 @@
 type model_params = {
     -- environment parameters
-    pct_pop: f32,
     --diffusion_ker_size: i32,
     decay: f32,
 
@@ -28,9 +27,7 @@ type env [grid_h][grid_w][n_agents] = {
 let bounded (max: f32)
             (x: f32)
             : f32 =
-  if x >= 0 && x < max
-  then x
-  else (x + max) f32.% max
+  (x + max + max) f32.% max
 
 let loc2grid (grid_size: i32)
              (real_loc: f32)
@@ -46,8 +43,8 @@ let read_sensor [xn] [yn]
                 (x: f32, y: f32)
                 (ang: f32)
                 : f32 =
-  let sx = f32.cos ang * p.sensor_offset + x |> loc2grid xn
-  let sy = f32.sin ang * p.sensor_offset + y |> loc2grid yn
+  let sx = loc2grid xn (f32.cos ang * p.sensor_offset + x)
+  let sy = loc2grid yn (f32.sin ang * p.sensor_offset + y)
   in trail_map[sy,sx]
 
 let move_step (p: model_params)
@@ -99,13 +96,65 @@ let disperse_trail [h][w][a]
   {model_params, agent_list,
    trail_map=tabulate_2d h w (disperse_cell model_params trail_map)}
 
-let simulation_step [h][w][a]
+
+-- Library API
+
+
+entry simulation_step [h][w][a]
                     (e: env[h][w][a])
                     : env[h][w][a] =
   e |> step_agents |> disperse_trail
 
-let run_simulation [h][w][a]
+entry run_simulation [h][w][a]
                    (n: i32)
                    (e0: env[h][w][a])
                    : env[h][w][a] =
   loop e = e0 for _i < n do simulation_step e
+
+entry init [h][w][a]
+           (decay: f32)
+           (sensor_angle: f32)
+           (sensor_offset: f32)
+           (rot_angle: f32)
+           (step_size: f32)
+           (deposit_amount: f32)
+           (trail_map: [h][w]f32)
+           (agent_x: [a]f32)
+           (agent_y: [a]f32)
+           (agent_ang: [a]f32)
+           : env[h][w][a] =
+  { model_params = { decay
+                   , sensor_angle
+                   , sensor_offset
+                   , rot_angle
+                   , step_size
+                   , deposit_amount
+                   }
+  , trail_map
+  , agent_list = map3 (\x y ang -> {loc=(x,y), ang}) agent_x agent_y agent_ang
+  }
+
+entry update_params [h][w][a]
+                    (decay: f32)
+                    (sensor_angle: f32)
+                    (sensor_offset: f32)
+                    (rot_angle: f32)
+                    (step_size: f32)
+                    (deposit_amount: f32)
+                    (e: env[h][w][a])
+                    : env[h][w][a] =
+  { model_params = { decay
+                   , sensor_angle
+                   , sensor_offset
+                   , rot_angle
+                   , step_size
+                   , deposit_amount
+                   }
+  , trail_map=e.trail_map
+  , agent_list=e.agent_list
+  }
+
+entry get_trail_map [h][w][a]
+                    (e: env[h][w][a])
+                    : [h][w]f32 =
+  e.trail_map

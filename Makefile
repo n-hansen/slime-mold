@@ -10,7 +10,7 @@ SHELL := bash
 MAKEFLAGS += --warn-undefined-variables
 MAKEFLAGS += --no-builtin-rules
 
-.PHONY: test bench venv
+.PHONY: test bench venv build
 
 test:
 > futhark test `fd '.*_test.fut'`
@@ -44,3 +44,8 @@ venv/bin/activate: requirements.txt
 > touch venv/bin/activate
 
 venv: venv/bin/activate
+
+slime.py: slime.fut
+> futhark pyopencl --library slime.fut
+
+build: slime.py

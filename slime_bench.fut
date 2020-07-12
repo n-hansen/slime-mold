@@ -8,8 +8,7 @@ let bench_env [h][w][a]
               (agent_a: [a]f32)
               : env[h][w][a] =
   { model_params =
-      { pct_pop = 0
-      , decay = 0.9
+      { decay = 0.9
       , sensor_angle = f32.pi/4
       , sensor_offset = 3
       , rot_angle = f32.pi/8
