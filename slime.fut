@@ -80,14 +80,14 @@ let step_agents [h][w][a]
 let disperse_cell [h][w]
                   (p: model_params)
                   (trail_map: [h][w]f32)
-                  (x: i32) (y: i32)
+                  (y: i32) (x: i32)
                   : f32 =
   let neighbors = map (\(dx,dy) -> trail_map[(y+dy+h) i32.% h,
                                              (x+dx+w) i32.% w]
                       ) [(-1, 1), ( 0, 1), ( 1, 1),
                          (-1, 0),          ( 1, 0),
                          (-1,-1), ( 0,-1), ( 1,-1)]
-  let sum = trail_map[x,y] + reduce (+) 0 neighbors
+  let sum = trail_map[y,x] + reduce (+) 0 neighbors
   in p.decay * sum / 9
 
 let disperse_trail [h][w][a]
