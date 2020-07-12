@@ -77,7 +77,7 @@ let step_agents [h][w][a]
                 : env[h][w][a] =
   let (stepped, deposits) = unzip (map (step_agent model_params trail_map) agent_list)
   let flat_deposits = map (\(x,y) -> y*w+x) deposits
-  let deposited = reduce_by_index (flatten trail_map) (+) 0 flat_deposits (replicate a model_params.deposit_amount)
+  let deposited = reduce_by_index (copy (flatten trail_map)) (+) 0 flat_deposits (replicate a model_params.deposit_amount)
   in {model_params, trail_map=unflatten h w deposited, agent_list=stepped}
 
 let disperse_cell [h][w]
