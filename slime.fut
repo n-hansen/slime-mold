@@ -85,8 +85,8 @@ let disperse_cell [h][w]
                   (trail_map: [h][w]f32)
                   (x: i32) (y: i32)
                   : f32 =
-  let neighbors = map (\(nx,ny) -> trail_map[(ny+h) i32.% h,
-                                             (nx+w) i32.% w]
+  let neighbors = map (\(dx,dy) -> trail_map[(y+dy+h) i32.% h,
+                                             (x+dx+w) i32.% w]
                       ) [(-1, 1), ( 0, 1), ( 1, 1),
                          (-1, 0),          ( 1, 0),
                          (-1,-1), ( 0,-1), ( 1,-1)]
