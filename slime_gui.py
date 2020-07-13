@@ -64,6 +64,7 @@ class GUI:
     def loop(self):
         while True:
             self.render()
+            self.handle_input()
 
     def render(self):
         start = time.time()
@@ -83,6 +84,14 @@ class GUI:
     def show_text(self, what, where, color=(255, 0, 255), antialias=True):
         text = self.font.render(what, antialias, color)
         self.screen.blit(text, where)
+
+    def handle_input(self):
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                raise SlimeQuit()
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_q:
+                    raise SlimeQuit()
 
 
 if __name__ == "__main__":
