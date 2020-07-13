@@ -160,3 +160,9 @@ entry get_trail_map [h][w][a]
                     (e: env[h][w][a])
                     : [h][w]f32 =
   e.trail_map
+
+entry get_agent_density [h][w][a]
+                        (e: env[h][w][a])
+                        : [h][w]i32 =
+  let locs = map (\a -> t32 a.loc.0 + t32 a.loc.1 * h) e.agent_list
+  in unflatten h w (reduce_by_index (replicate (w*h) 0) (+) 0 locs (replicate a 1))

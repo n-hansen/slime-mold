@@ -38,6 +38,9 @@ class Simulation:
     def trail_map(self):
         return self.slime.get_trail_map(self.env).get()
 
+    def agent_density(self):
+        return self.slime.get_agent_density(self.env).get()
+
 
 class SlimeQuit(Exception):
     pass
@@ -71,7 +74,7 @@ class GUI:
         frame = self.new_frame()
         end = time.time()
         diff_ms = (end - start) * 1000.0
-        frame = np.clip(255 * frame, 0, 255)
+
         pygame.surfarray.blit_array(self.surface, frame)
         self.screen.blit(self.surface, (0, 0))
         self.show_text("Rendered in {:.2f} ms".format(diff_ms), (5, 5))
@@ -79,7 +82,11 @@ class GUI:
 
     def new_frame(self):
         self.sim.single_step()
-        return self.sim.trail_map()
+        tm = self.sim.trail_map()
+        ad = self.sim.agent_density()
+        frame = np.int32(np.clip(255 * tm, 0, 255)) << 16
+        frame = frame + np.int32(np.clip((25 * ad), 0, 255))
+        return frame
 
     def show_text(self, what, where, color=(255, 0, 255), antialias=True):
         text = self.font.render(what, antialias, color)
