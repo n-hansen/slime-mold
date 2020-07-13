@@ -1,3 +1,4 @@
 build
 bench_input
 venv
+__pycache__
