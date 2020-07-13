@@ -14,8 +14,10 @@ let bench_env [h][w][a]
       , rot_angle = f32.pi/8
       , step_size = 1
       , deposit_amount = 1
+      , max_density=3
       }
   , trail_map
+  , density_map= replicate h (replicate w 0)
   , agent_list = map3 (\x y ang -> {loc=(x,y), ang})
                       agent_x
                       agent_y

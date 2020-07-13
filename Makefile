@@ -29,8 +29,8 @@ build/slime_bench-opencl: slime.fut slime_bench.fut
 > futhark opencl ../slime_bench.fut -o slime_bench-opencl
 
 bench: bench_input build/slime_bench-c build/slime_bench-opencl
-> echo 'Benchmarking C...'
-> cat bench_input | build/slime_bench-c -t /dev/stderr  > /dev/null
+#> echo 'Benchmarking C...'
+#> cat bench_input | build/slime_bench-c -t /dev/stderr  > /dev/null
 > echo 'Benchmarking OpenCL...'
 > cat bench_input | build/slime_bench-opencl -t /dev/stderr  > /dev/null
 

@@ -1,6 +1,5 @@
 type model_params = {
     -- environment parameters
-    --diffusion_ker_size: i32,
     decay: f32,
 
     -- agent parameters
@@ -25,6 +24,11 @@ type env [grid_h][grid_w][n_agents] = {
     density_map: [grid_h][grid_w]i32,
     agent_list: [n_agents]agent
   }
+
+-- let diffusion_ker: [9](i32,i32,f32) =
+--   let flat = flatten_to 9 (tabulate_2d 3 3 (\x y -> (x-1, y-1, 1 / f32.cosh (r32 ((x-1)**2 + (y-1)**2)))))
+--   let total = reduce (+) 0 (map (.2) flat)
+--   in map (\(x,y,z) -> (x,y,z/total)) flat
 
 let bounded (max: f32)
             (x: f32)
@@ -104,13 +108,21 @@ let disperse_cell [h][w]
                   (trail_map: [h][w]f32)
                   (y: i32) (x: i32)
                   : f32 =
-  let neighbors = map (\(dx,dy) -> trail_map[(y+dy+h) i32.% h,
-                                             (x+dx+w) i32.% w]
-                      ) [(-1, 1), ( 0, 1), ( 1, 1),
-                         (-1, 0),          ( 1, 0),
-                         (-1,-1), ( 0,-1), ( 1,-1)]
-  let sum = trail_map[y,x] + reduce (+) 0 neighbors
-  in p.decay * sum / 9
+  let bdd m x = if x < m && x >= 0 then x else (x+m) i32.% h
+  let neighbors = map (\(dx,dy,wt) -> wt * trail_map[bdd h (y+dy),
+                                                     bdd w (x+dx)]
+                      ) [(-1i32, -1i32, 5.709514e-2f32),
+                         (-1i32, 0i32, 0.13920408f32),
+                         (-1i32, 1i32, 5.709514e-2f32),
+                         (0i32, -1i32, 0.13920408f32),
+                         (0i32, 0i32, 0.21480311f32),
+                         (0i32, 1i32, 0.13920408f32),
+                         (1i32, -1i32, 5.709514e-2f32),
+                         (1i32, 0i32, 0.13920408f32),
+                         (1i32, 1i32, 5.709514e-2f32)]
+
+  let sum = reduce (+) 0 neighbors
+  in p.decay * sum
 
 let disperse_trail [h][w][a]
                    ({model_params, trail_map, density_map, agent_list}: env[h][w][a])
