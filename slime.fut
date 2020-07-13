@@ -9,7 +9,8 @@ type model_params = {
     -- sensor_width: i32,
     rot_angle: f32,
     step_size: f32,
-    deposit_amount: f32
+    deposit_amount: f32,
+    max_density: i32
     -- angle_jitter: f32
   }
 
@@ -21,6 +22,7 @@ type agent = {
 type env [grid_h][grid_w][n_agents] = {
     model_params: model_params,
     trail_map: [grid_h][grid_w]f32,
+    density_map: [grid_h][grid_w]i32,
     agent_list: [n_agents]agent
   }
 
@@ -56,11 +58,18 @@ let move_step (h: i32) (w: i32)
   let y_ = bounded (r32 h) <| y + p.step_size * f32.sin ang
   in {loc=(x_, y_), ang}
 
+let check_density (p: model_params)
+                  (density_map: [][]i32)
+                  (x,y)
+                  : bool =
+  density_map[t32 y, t32 x] < p.max_density
+
 let step_agent [h][w]
                (p: model_params)
                (trail_map: [h][w]f32)
+               (density_map: [h][w]i32)
                ({loc,ang}: agent)
-               : (agent, (i32, i32)) =
+               : (agent, (i32, i32, f32)) =
   let sl = read_sensor p trail_map loc (ang + p.sensor_angle)
   let sf = read_sensor p trail_map loc ang
   let sr = read_sensor p trail_map loc (ang - p.sensor_angle)
@@ -69,15 +78,26 @@ let step_agent [h][w]
                 else (if sr >= sl
                       then move_step h w p {loc, ang=ang - p.rot_angle}
                       else move_step h w p {loc, ang=ang + p.rot_angle})
-  in (stepped, (t32 loc.0, t32 loc.1))
+  in if check_density p density_map stepped.loc
+     then (stepped, (t32 loc.0, t32 loc.1, p.deposit_amount))
+     else ({loc,ang=stepped.ang}, (t32 loc.0, t32 loc.1, 0))
 
 let step_agents [h][w][a]
-                ({model_params, trail_map, agent_list}: env[h][w][a])
+                ({model_params, trail_map, density_map, agent_list}: env[h][w][a])
                 : env[h][w][a] =
-  let (stepped, deposits) = unzip (map (step_agent model_params trail_map) agent_list)
-  let flat_deposits = map (\(x,y) -> y*w+x) deposits
-  let deposited = reduce_by_index (copy (flatten trail_map)) (+) 0 flat_deposits (replicate a model_params.deposit_amount)
-  in {model_params, trail_map=unflatten h w deposited, agent_list=stepped}
+  let (stepped, deposits) = unzip (map (step_agent model_params trail_map density_map) agent_list)
+  let (flat_deposits_ix, flat_deposits_amnt) = map (\(x,y,amnt) -> (y*w+x, (amnt, 1))) deposits |> unzip
+  let (deposited, counted) = reduce_by_index
+                             (map (\x -> (x,0)) (flatten trail_map))
+                             (\(x1,y1) (x2,y2) -> (x1+x2, y1+y2))
+                             (0,0)
+                             flat_deposits_ix
+                             flat_deposits_amnt
+                             |> unzip
+  in { model_params
+     , trail_map=unflatten h w deposited
+     , density_map=unflatten h w counted
+     , agent_list=stepped}
 
 let disperse_cell [h][w]
                   (p: model_params)
@@ -93,10 +113,12 @@ let disperse_cell [h][w]
   in p.decay * sum / 9
 
 let disperse_trail [h][w][a]
-                   ({model_params, trail_map, agent_list}: env[h][w][a])
+                   ({model_params, trail_map, density_map, agent_list}: env[h][w][a])
                    : env[h][w][a] =
-  {model_params, agent_list,
-   trail_map=tabulate_2d h w (disperse_cell model_params trail_map)}
+  { model_params
+  , agent_list
+  , density_map
+  , trail_map=tabulate_2d h w (disperse_cell model_params trail_map)}
 
 
 -- Library API
@@ -120,6 +142,7 @@ entry init [h][w][a]
            (rot_angle: f32)
            (step_size: f32)
            (deposit_amount: f32)
+           (max_density: i32)
            (trail_map: [h][w]f32)
            (agent_x: [a]f32)
            (agent_y: [a]f32)
@@ -131,8 +154,10 @@ entry init [h][w][a]
                    , rot_angle
                    , step_size
                    , deposit_amount
+                   , max_density
                    }
   , trail_map
+  , density_map=replicate (w*h) 0 |> unflatten h w
   , agent_list = map3 (\x y ang -> {loc=(x,y), ang}) agent_x agent_y agent_ang
   }
 
@@ -143,6 +168,7 @@ entry update_params [h][w][a]
                     (rot_angle: f32)
                     (step_size: f32)
                     (deposit_amount: f32)
+                    (max_density: i32)
                     (e: env[h][w][a])
                     : env[h][w][a] =
   { model_params = { decay
@@ -151,18 +177,21 @@ entry update_params [h][w][a]
                    , rot_angle
                    , step_size
                    , deposit_amount
+                   , max_density
                    }
   , trail_map=e.trail_map
+  , density_map=e.density_map
   , agent_list=e.agent_list
   }
 
-entry get_trail_map [h][w][a]
-                    (e: env[h][w][a])
-                    : [h][w]f32 =
-  e.trail_map
+entry render_frame [h][w][a]
+                   (e: env[h][w][a])
+                   : [h][w]i32 =
+  map2 (
+    map2 (
+      \t_cell d_cell ->
+        (t32 (f32.min t_cell 1 * 255) << 16)
+        + i32.min 255 (d_cell * 255 / e.model_params.max_density)
+    )
+  ) e.trail_map e.density_map
 
-entry get_agent_density [h][w][a]
-                        (e: env[h][w][a])
-                        : [h][w]i32 =
-  let locs = map (\a -> t32 a.loc.0 + t32 a.loc.1 * h) e.agent_list
-  in unflatten h w (reduce_by_index (replicate (w*h) 0) (+) 0 locs (replicate a 1))
