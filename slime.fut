@@ -27,7 +27,7 @@ type env [grid_h][grid_w][n_agents] = {
 let bounded (max: f32)
             (x: f32)
             : f32 =
-  (x + max + max) f32.% max
+  (x + max) f32.% max
 
 let loc2grid (grid_size: i32)
              (real_loc: f32)
@@ -47,26 +47,28 @@ let read_sensor [xn] [yn]
   let sy = loc2grid yn (f32.sin ang * p.sensor_offset + y)
   in trail_map[sy,sx]
 
-let move_step (p: model_params)
+let move_step (h: i32) (w: i32)
+              (p: model_params)
               ({loc=(x: f32, y: f32),
                 ang: f32} : agent)
               : agent =
-  let x_ = x + p.step_size * f32.cos ang
-  let y_ = y + p.step_size * f32.sin ang
+  let x_ = bounded (r32 w) <| x + p.step_size * f32.cos ang
+  let y_ = bounded (r32 h) <| y + p.step_size * f32.sin ang
   in {loc=(x_, y_), ang}
 
-let step_agent (p: model_params)
-               (trail_map: [][]f32)
+let step_agent [h][w]
+               (p: model_params)
+               (trail_map: [h][w]f32)
                ({loc,ang}: agent)
                : (agent, (i32, i32)) =
   let sl = read_sensor p trail_map loc (ang + p.sensor_angle)
   let sf = read_sensor p trail_map loc ang
   let sr = read_sensor p trail_map loc (ang - p.sensor_angle)
   let stepped = if sf >= sr && sf >= sl
-                then move_step p {loc,ang}
+                then move_step h w p {loc,ang}
                 else (if sr >= sl
-                      then move_step p {loc, ang=ang - p.rot_angle}
-                      else move_step p {loc, ang=ang + p.rot_angle})
+                      then move_step h w p {loc, ang=ang - p.rot_angle}
+                      else move_step h w p {loc, ang=ang + p.rot_angle})
   in (stepped, (t32 loc.0, t32 loc.1))
 
 let step_agents [h][w][a]
