@@ -5,21 +5,24 @@ let to_rad (deg: i32): f32 = r32 deg * f32.pi / 180
 
 let build_test_env [h][w][a]
                    (trail_map: [h][w]f32)
+                   (nutrient_map: [h][w]f32)
                    (agent_xs: [a]f32)
                    (agent_ys: [a]f32)
                    (agent_angs: [a]i32)
                    : env[h][w][a] =
-  let model_params = { decay=0.5
-                     , sensor_angle=to_rad 45
-                     , sensor_offset=2
-                     , rot_angle=to_rad 45
-                     , step_size=1
-                     , deposit_amount=9
-                     , max_density=2
-                     }
-  let agent_list = map3 (\x y ang -> {loc=(x,y), ang=to_rad ang}) agent_xs agent_ys agent_angs
-  let density_map = replicate h (replicate w 1)
-  in {model_params, agent_list, density_map, trail_map}
+  init
+  0.5 -- trail_decay
+  0.8 -- nutrient_decay
+  (to_rad 45) -- sensor_angle
+  2 -- sensor_offset
+  (to_rad 45) -- rot_angle
+  1 -- step_size
+  9 -- deposit_amount
+  2 -- max_density
+  trail_map
+  agent_xs
+  agent_ys
+  (map to_rad agent_angs)
 
 
 -- Single Step Agent Tests
@@ -56,7 +59,8 @@ entry test_single_step_agent [h][w]
                              (y: f32)
                              (ang: i32)
                              : [3]f32 =
-  let agent_list = build_test_env trail_map [x] [y] [ang] |> simulation_step |> (.agent_list)
+  let blank_map = replicate h (replicate w 0)
+  let agent_list = build_test_env trail_map blank_map [x] [y] [ang] |> simulation_step |> (.agent_list)
   in [agent_list[0].loc.0, agent_list[0].loc.1, agent_list[0].ang |> to_deg |> r32]
 
 -- Single Step Trail Tests
@@ -107,6 +111,15 @@ entry test_single_step_trail [h][w]
 -- output {[[0,1,0,0],
 --          [0,0,0,0],
 --          [0,0,0,0]]}
+-- input {3 4 [1f32, 1f32, 1f32] [0f32, 0f32, 0f32] [0i32, 0i32, 0i32]}
+-- output {[[0,0,3,0],
+--          [0,0,0,0],
+--          [0,0,0,0]]}
+-- input {3 4 [0f32, 1f32, 1f32] [0f32, 0f32, 0f32] [0i32, 0i32, 0i32]}
+-- output {[[1,0,2,0],
+--          [0,0,0,0],
+--          [0,0,0,0]]}
+
 
 entry test_single_step_density [a]
                                (h: i32) (w: i32)
