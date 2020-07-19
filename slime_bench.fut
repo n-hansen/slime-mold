@@ -7,28 +7,32 @@ let bench_env [h][w][a]
               (agent_y: [a]f32)
               (agent_a: [a]f32)
               : env[h][w][a] =
-  { model_params =
-      { decay = 0.9
-      , sensor_angle = f32.pi/4
-      , sensor_offset = 3
-      , rot_angle = f32.pi/8
-      , step_size = 1
-      , deposit_amount = 1
-      , max_density=3
-      }
-  , trail_map
-  , density_map= replicate h (replicate w 0)
-  , agent_list = map3 (\x y ang -> {loc=(x,y), ang})
-                      agent_x
-                      agent_y
-                      agent_a
-  }
+  init
+  0.9
+  (f32.pi/4)
+  3
+  (f32.pi/8)
+  1
+  1
+  3
+  trail_map
+  (replicate h (replicate w 0))
+  agent_x
+  agent_y
+  agent_a
+  (replicate a 0)
+
+-- Run simulation
+-- ==
+-- compiled input @ bench_input
+-- output {0f32}
 
 let main (n: i32)
          (trail_map: [][]f32)
          (ax: []f32)
          (ay: []f32)
          (aa: []f32)
-         : [][]f32 =
+         : f32 =
   let e = bench_env trail_map ax ay aa
-  in run_simulation n e |> (.trail_map)
+  let result = run_simulation n e
+  in result.agent_list[0].nutrient / result.agent_list[0].loc.0
