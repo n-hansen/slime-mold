@@ -5,23 +5,48 @@ import pygame
 import time
 
 
+def gaussian(n):
+    x, y = np.meshgrid(np.linspace(-1, 1, n), np.linspace(-1, 1, n))
+    d = np.sqrt(x * x + y * y)
+    sigma, mu = 1.0, 0.0
+    return np.exp(-((d - mu) ** 2 / (2.0 * sigma ** 2)))
+
+
+def gaussian_in(big, small, x, y):
+    big_arr = np.zeros((big, big))
+    small_arr = gaussian(small)
+    big_arr[x : (x + small), y : (y + small)] = small_arr
+    return big_arr
+
+
 class Simulation:
     def __init__(
         self,
         grid_size,
         agent_pct,
-        decay=0.3,
+        trail_decay=0.7,
+        nutrient_decay=0.001,
+        nutrient_attr=100,
         sensor_angle=math.radians(60),
         sensor_offset=5,
         rotation_angle=math.radians(22.5),
         step_size=1,
-        deposit_amount=3,
-        max_density=2,
+        deposit_amount=1,
+        max_density=8,
     ):
+        nutrient = np.dstack(
+            (
+                gaussian_in(grid_size, 30, grid_size // 4, grid_size // 4),
+                gaussian_in(grid_size, 30, grid_size // 4, 3 * grid_size // 4),
+                gaussian_in(grid_size, 30, 3 * grid_size // 4, grid_size // 4),
+            )
+        )
         agent_count = math.ceil((grid_size * grid_size) * agent_pct)
         self.slime = slime()
         self.env = self.slime.init(
-            decay,
+            trail_decay,
+            nutrient_decay,
+            nutrient_attr,
             sensor_angle,
             sensor_offset,
             rotation_angle,
@@ -29,9 +54,11 @@ class Simulation:
             deposit_amount,
             max_density,
             np.float32(np.random.random((grid_size, grid_size))),
+            np.float32(nutrient),
             grid_size * np.float32(np.random.random((agent_count,))),
             grid_size * np.float32(np.random.random((agent_count,))),
             2 * math.pi * np.float32(np.random.random((agent_count,))),
+            np.zeros((agent_count, 3), dtype=np.float32),
         )
 
     def single_step(self):
@@ -116,5 +143,9 @@ class GUI:
 
 
 if __name__ == "__main__":
-    g = GUI(1000, render_diagnostics=True,)
+    g = GUI(
+        800,
+        # render_diagnostics=False,
+        # dump_images="img/{:04d}.png"
+    )
     g.run()

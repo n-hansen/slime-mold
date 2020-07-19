@@ -1,6 +1,8 @@
 type model_params = {
     -- environment parameters
     trail_decay: f32,
+    nutrient_decay: f32,
+    nutrient_attr: f32,
 
     -- agent parameters
     sensor_angle: f32,
@@ -13,18 +15,18 @@ type model_params = {
     -- angle_jitter: f32
   }
 
-type agent = {
+type agent [n] = {
     loc: (f32,f32),
     ang: f32,
-    nutrient: f32
+    nutrient: [n]f32
   }
 
-type env [grid_h][grid_w][n_agents] = {
+type env [grid_h][grid_w][n_agents][nutrient_channels] = {
     model_params: model_params,
     trail_map: [grid_h][grid_w]f32,
     density_map: [grid_h][grid_w]i32,
-    nutrient_map: [grid_h][grid_w]f32,
-    agent_list: [n_agents]agent
+    nutrient_map: [grid_h][grid_w][nutrient_channels]f32,
+    agent_list: [n_agents]agent[nutrient_channels]
   }
 
 -- let diffusion_ker: [9](i32,i32,f32) =
@@ -32,14 +34,16 @@ type env [grid_h][grid_w][n_agents] = {
 --   let total = reduce (+) 0 (map (.2) flat)
 --   in map (\(x,y,z) -> (x,y,z/total)) flat
 
-let update_nutrient (nutrient_map: [][]f32)
-                    ({loc, ang, nutrient}: agent)
-                    : agent =
-  let local_val = nutrient_map[t32 loc.1, t32 loc.0]
-  in { loc
-     , ang
-     , nutrient=f32.sqrt <| (local_val * local_val + nutrient * nutrient) / 2
-     }
+let update_nutrient [h][w][a][n]
+                    (e: env[h][w][a][n])
+                    ({loc, ang, nutrient}: agent[n])
+                    : agent[n] =
+  { loc
+  , ang
+  , nutrient=map2 (\m n -> f32.max 0 <| f32.max n (m + n / 2) - e.model_params.nutrient_decay)
+                  e.nutrient_map[t32 loc.1, t32 loc.0]
+                  nutrient
+  }
 
 let bounded (max: f32)
             (x: f32)
@@ -54,20 +58,29 @@ let loc2grid (grid_size: i32)
      then t32 real_loc
      else t32 (bounded gs_f real_loc)
 
-let read_sensor [h][w][a]
-                (e: env[h][w][a])
-                (x: f32, y: f32)
-                (ang: f32)
-                (nutrient: f32)
+let read_sensor [h][w][a][n]
+                (e: env[h][w][a][n])
+                ({loc=(x,y), ang, nutrient}: agent[n])
+                (ang_offset: f32)
                 : f32 =
-  let sx = loc2grid w (f32.cos ang * e.model_params.sensor_offset + x)
-  let sy = loc2grid h (f32.sin ang * e.model_params.sensor_offset + y)
-  in e.trail_map[sy,sx] + f32.max 0 (e.nutrient_map[sy,sx] - nutrient)
+  let sx = loc2grid w (f32.cos (ang + ang_offset) * e.model_params.sensor_offset + x)
+  let sy = loc2grid h (f32.sin (ang + ang_offset) * e.model_params.sensor_offset + y)
+  in if sx < 5
+        || sx >= w-5
+        || sy < 5
+        || sy >= h-5
+     then 0 else
+  let nut = f32.sum(
+              map (\i -> f32.max 0 <| e.nutrient_map[sy,sx,i] - nutrient[i])
+                  (iota n)
+            )
+  in e.trail_map[sy,sx] + e.model_params.nutrient_attr * nut
 
-let move_step (h: i32) (w: i32)
+let move_step [n]
+              (h: i32) (w: i32)
               (p: model_params)
-              ({loc=(x, y), ang, nutrient} : agent)
-              : agent =
+              ({loc=(x, y), ang, nutrient} : agent[n])
+              : agent[n] =
   let x_ = bounded (r32 w) <| x + p.step_size * f32.cos ang
   let y_ = bounded (r32 h) <| y + p.step_size * f32.sin ang
   in {loc=(x_, y_), ang, nutrient}
@@ -78,34 +91,34 @@ let check_density (p: model_params)
                   : bool =
   density_map[t32 y, t32 x] < p.max_density
 
-let step_agent [h][w][a]
-               (e: env[h][w][a])
-               ({loc,ang,nutrient}: agent)
-               : (agent, (i32, i32, f32)) =
-  let sl = read_sensor e loc (ang + e.model_params.sensor_angle) nutrient
-  let sf = read_sensor e loc ang nutrient
-  let sr = read_sensor e loc (ang - e.model_params.sensor_angle) nutrient
+let step_agent [h][w][a][n]
+               (e: env[h][w][a][n])
+               (a: agent[n])
+               : (agent[n], (i32, i32, f32)) =
+  let sl = read_sensor e a e.model_params.sensor_angle
+  let sf = read_sensor e a 0
+  let sr = read_sensor e a (-e.model_params.sensor_angle)
   let stepped = if sf >= sr && sf >= sl
-                then move_step h w e.model_params {loc, ang, nutrient}
+                then move_step h w e.model_params a
                 else (if sr >= sl
-                      then move_step h w e.model_params {loc, ang=ang - e.model_params.rot_angle, nutrient}
-                      else move_step h w e.model_params {loc, ang=ang + e.model_params.rot_angle, nutrient})
+                      then move_step h w e.model_params {loc=a.loc, ang=a.ang - e.model_params.rot_angle, nutrient=a.nutrient}
+                      else move_step h w e.model_params {loc=a.loc, ang=a.ang + e.model_params.rot_angle, nutrient=a.nutrient})
   in if check_density e.model_params e.density_map stepped.loc
-     then ( update_nutrient e.nutrient_map stepped
+     then ( update_nutrient e stepped
           , (t32 stepped.loc.0
             , t32 stepped.loc.1
             , e.model_params.deposit_amount
             )
           )
-     else ( update_nutrient e.nutrient_map {loc,ang=stepped.ang, nutrient}
-          , (t32 loc.0
-            , t32 loc.1
+     else ( update_nutrient e {loc=a.loc,ang=stepped.ang, nutrient=a.nutrient}
+          , (t32 a.loc.0
+            , t32 a.loc.1
             , 0)
           )
 
-let step_agents [h][w][a]
-                (e: env[h][w][a])
-                : env[h][w][a] =
+let step_agents [h][w][a][n]
+                (e: env[h][w][a][n])
+                : env[h][w][a][n] =
   let (stepped, deposits) = unzip (map (step_agent e) e.agent_list)
   let (flat_deposits_ix, flat_deposits_amnt) = map (\(x,y,amnt) -> (y*w+x, (amnt, 1))) deposits |> unzip
   let (deposited, counted) = reduce_by_index
@@ -142,9 +155,9 @@ let disperse_cell [h][w]
   let sum = reduce (+) 0 neighbors
   in p.trail_decay * sum
 
-let disperse_trail [h][w][a]
-                   ({model_params, trail_map, density_map, nutrient_map, agent_list}: env[h][w][a])
-                   : env[h][w][a] =
+let disperse_trail [h][w][a][n]
+                   ({model_params, trail_map, density_map, nutrient_map, agent_list}: env[h][w][a][n])
+                   : env[h][w][a][n] =
   { model_params
   , agent_list
   , density_map
@@ -155,19 +168,21 @@ let disperse_trail [h][w][a]
 -- Library API
 
 
-entry simulation_step [h][w][a]
-                    (e: env[h][w][a])
-                    : env[h][w][a] =
+entry simulation_step [h][w][a][n]
+                    (e: env[h][w][a][n])
+                    : env[h][w][a][n] =
   e |> step_agents |> disperse_trail
 
-entry run_simulation [h][w][a]
-                   (n: i32)
-                   (e0: env[h][w][a])
-                   : env[h][w][a] =
-  loop e = e0 for _i < n do simulation_step e
+entry run_simulation [h][w][a][n]
+                     (times: i32)
+                     (e0: env[h][w][a][n])
+                     : env[h][w][a][n] =
+  loop e = e0 for _i < times do simulation_step e
 
-entry init [h][w][a]
+entry init [h][w][a][n]
            (trail_decay: f32)
+           (nutrient_decay: f32)
+           (nutrient_attr: f32)
            (sensor_angle: f32)
            (sensor_offset: f32)
            (rot_angle: f32)
@@ -175,13 +190,15 @@ entry init [h][w][a]
            (deposit_amount: f32)
            (max_density: i32)
            (trail_map: [h][w]f32)
-           (nutrient_map: [h][w]f32)
+           (nutrient_map: [h][w][n]f32)
            (agent_x: [a]f32)
            (agent_y: [a]f32)
            (agent_ang: [a]f32)
-           (agent_nut: [a]f32)
-           : env[h][w][a] =
+           (agent_nut: [a][n]f32)
+           : env[h][w][a][n] =
   { model_params = { trail_decay
+                   , nutrient_decay
+                   , nutrient_attr
                    , sensor_angle
                    , sensor_offset
                    , rot_angle
@@ -200,17 +217,21 @@ entry init [h][w][a]
   , agent_list = map4 (\x y ang nutrient -> {loc=(x,y), ang, nutrient}) agent_x agent_y agent_ang agent_nut
   }
 
-entry update_params [h][w][a]
+entry update_params [h][w][a][n]
                     (trail_decay: f32)
+                    (nutrient_decay: f32)
+                    (nutrient_attr: f32)
                     (sensor_angle: f32)
                     (sensor_offset: f32)
                     (rot_angle: f32)
                     (step_size: f32)
                     (deposit_amount: f32)
                     (max_density: i32)
-                    (e: env[h][w][a])
-                    : env[h][w][a] =
+                    (e: env[h][w][a][n])
+                    : env[h][w][a][n] =
   { model_params = { trail_decay
+                   , nutrient_decay
+                   , nutrient_attr
                    , sensor_angle
                    , sensor_offset
                    , rot_angle
@@ -224,14 +245,52 @@ entry update_params [h][w][a]
   , agent_list=e.agent_list
   }
 
-entry render_frame [h][w][a]
-                   (e: env[h][w][a])
-                   : [h][w]i32 =
-  map2 (
-    map2 (
-      \t_cell d_cell ->
-        (t32 (f32.min t_cell 1 * 255) << 16)
-        + i32.min 255 (d_cell * 255 / e.model_params.max_density)
-    )
-  ) e.trail_map e.density_map
 
+let render_trail [h][w][a][n]
+                   (e: env[h][w][a][n])
+                   : [h][w]f32 =
+  map (
+    map (\t -> f32.min 1 t)
+  ) e.trail_map
+
+let render_density [h][w][a][n]
+                   (e: env[h][w][a][n])
+                   : [h][w]f32 =
+  map (
+    map (\d -> r32 d / r32 e.model_params.max_density)
+  ) e.density_map
+
+let render_nutrient [h][w][a][n]
+                    (e: env[h][w][a][n])
+                    (a: [n]f32) -- a*n+b
+                    (b: [n]f32)
+                    : [h][w]f32 =
+  let (is, as) = map (
+                   \{loc=(x,y), ang=_, nutrient} -> ( t32 x + t32 y * w
+                                                    , f32.sum (
+                                                        map3 f32.fma nutrient a b
+                                                      )
+                                                    )
+                 ) e.agent_list
+                 |> unzip
+  in reduce_by_index
+     (replicate (h*w) 0)
+     (+) 0
+     is as
+     |> unflatten h w
+
+entry render_frame [h][w][a]
+                   (e: env[h][w][a][3])
+      : [h][w]i32 =
+  let rss = render_nutrient e [255,0,0] [0,0,0]
+  let gss = render_nutrient e [0,255,0] [0,0,0]
+  let bss = render_nutrient e [0,0,255] [0,0,0]
+  in map3 (
+       \rs gs bs ->
+         map3 (
+           \r g b -> (t32 r << 16) +
+                     (t32 g << 8) +
+                     (t32 b) + 0
+
+         ) rs gs bs
+     ) rss gss bss
