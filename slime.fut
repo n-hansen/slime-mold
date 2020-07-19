@@ -1,7 +1,6 @@
 type model_params = {
     -- environment parameters
     trail_decay: f32,
-    nutrient_decay: f32,
 
     -- agent parameters
     sensor_angle: f32,
@@ -32,6 +31,15 @@ type env [grid_h][grid_w][n_agents] = {
 --   let flat = flatten_to 9 (tabulate_2d 3 3 (\x y -> (x-1, y-1, 1 / f32.cosh (r32 ((x-1)**2 + (y-1)**2)))))
 --   let total = reduce (+) 0 (map (.2) flat)
 --   in map (\(x,y,z) -> (x,y,z/total)) flat
+
+let update_nutrient (nutrient_map: [][]f32)
+                    ({loc, ang, nutrient}: agent)
+                    : agent =
+  let local_val = nutrient_map[t32 loc.1, t32 loc.0]
+  in { loc
+     , ang
+     , nutrient=f32.sqrt <| (local_val * local_val + nutrient * nutrient) / 2
+     }
 
 let bounded (max: f32)
             (x: f32)
@@ -70,41 +78,48 @@ let check_density (p: model_params)
                   : bool =
   density_map[t32 y, t32 x] < p.max_density
 
-let step_agent [h][w]
-               (p: model_params)
-               (trail_map: [h][w]f32)
-               (density_map: [h][w]i32)
+let step_agent [h][w][a]
+               (e: env[h][w][a])
                ({loc,ang,nutrient}: agent)
                : (agent, (i32, i32, f32)) =
-  let sl = read_sensor p trail_map loc (ang + p.sensor_angle)
-  let sf = read_sensor p trail_map loc ang
-  let sr = read_sensor p trail_map loc (ang - p.sensor_angle)
+  let sl = read_sensor e.model_params e.trail_map loc (ang + e.model_params.sensor_angle)
+  let sf = read_sensor e.model_params e.trail_map loc ang
+  let sr = read_sensor e.model_params e.trail_map loc (ang - e.model_params.sensor_angle)
   let stepped = if sf >= sr && sf >= sl
-                then move_step h w p {loc,ang, nutrient}
+                then move_step h w e.model_params {loc, ang, nutrient}
                 else (if sr >= sl
-                      then move_step h w p {loc, ang=ang - p.rot_angle, nutrient}
-                      else move_step h w p {loc, ang=ang + p.rot_angle, nutrient})
-  in if check_density p density_map stepped.loc
-     then (stepped, (t32 stepped.loc.0, t32 stepped.loc.1, p.deposit_amount))
-     else ({loc,ang=stepped.ang, nutrient}, (t32 loc.0, t32 loc.1, 0))
+                      then move_step h w e.model_params {loc, ang=ang - e.model_params.rot_angle, nutrient}
+                      else move_step h w e.model_params {loc, ang=ang + e.model_params.rot_angle, nutrient})
+  in if check_density e.model_params e.density_map stepped.loc
+     then ( update_nutrient e.nutrient_map stepped
+          , (t32 stepped.loc.0
+            , t32 stepped.loc.1
+            , e.model_params.deposit_amount
+            )
+          )
+     else ( update_nutrient e.nutrient_map {loc,ang=stepped.ang, nutrient}
+          , (t32 loc.0
+            , t32 loc.1
+            , 0)
+          )
 
 let step_agents [h][w][a]
-                ({model_params, trail_map, density_map, nutrient_map, agent_list}: env[h][w][a])
+                (e: env[h][w][a])
                 : env[h][w][a] =
-  let (stepped, deposits) = unzip (map (step_agent model_params trail_map density_map) agent_list)
+  let (stepped, deposits) = unzip (map (step_agent e) e.agent_list)
   let (flat_deposits_ix, flat_deposits_amnt) = map (\(x,y,amnt) -> (y*w+x, (amnt, 1))) deposits |> unzip
   let (deposited, counted) = reduce_by_index
-                             (map (\x -> (x,0)) (flatten trail_map))
+                             (map (\x -> (x,0)) (flatten e.trail_map))
                              (\(x1,y1) (x2,y2) -> (x1+x2, y1+y2))
                              (0,0)
                              flat_deposits_ix
                              flat_deposits_amnt
                              |> unzip
-  in { model_params
+  in { model_params=e.model_params
      , trail_map=unflatten h w deposited
      , density_map=unflatten h w counted
      , agent_list=stepped
-     , nutrient_map}
+     , nutrient_map=e.nutrient_map}
 
 let disperse_cell [h][w]
                   (p: model_params)
@@ -153,7 +168,6 @@ entry run_simulation [h][w][a]
 
 entry init [h][w][a]
            (trail_decay: f32)
-           (nutrient_decay: f32)
            (sensor_angle: f32)
            (sensor_offset: f32)
            (rot_angle: f32)
@@ -161,12 +175,13 @@ entry init [h][w][a]
            (deposit_amount: f32)
            (max_density: i32)
            (trail_map: [h][w]f32)
+           (nutrient_map: [h][w]f32)
            (agent_x: [a]f32)
            (agent_y: [a]f32)
            (agent_ang: [a]f32)
+           (agent_nut: [a]f32)
            : env[h][w][a] =
   { model_params = { trail_decay
-                   , nutrient_decay
                    , sensor_angle
                    , sensor_offset
                    , rot_angle
@@ -181,13 +196,12 @@ entry init [h][w][a]
                 (map2 (\x y -> t32 x + t32 y * w) agent_x agent_y)
                 (replicate a 1)
                 |> unflatten h w
-  , nutrient_map=replicate h (replicate w 0)
-  , agent_list = map3 (\x y ang -> {loc=(x,y), ang, nutrient=0}) agent_x agent_y agent_ang
+  , nutrient_map
+  , agent_list = map4 (\x y ang nutrient -> {loc=(x,y), ang, nutrient}) agent_x agent_y agent_ang agent_nut
   }
 
 entry update_params [h][w][a]
                     (trail_decay: f32)
-                    (nutrient_decay: f32)
                     (sensor_angle: f32)
                     (sensor_offset: f32)
                     (rot_angle: f32)
@@ -197,7 +211,6 @@ entry update_params [h][w][a]
                     (e: env[h][w][a])
                     : env[h][w][a] =
   { model_params = { trail_decay
-                   , nutrient_decay
                    , sensor_angle
                    , sensor_offset
                    , rot_angle

@@ -9,10 +9,10 @@ let build_test_env [h][w][a]
                    (agent_xs: [a]f32)
                    (agent_ys: [a]f32)
                    (agent_angs: [a]i32)
+                   (agent_nuts: [a]f32)
                    : env[h][w][a] =
   init
   0.5 -- trail_decay
-  0.8 -- nutrient_decay
   (to_rad 45) -- sensor_angle
   2 -- sensor_offset
   (to_rad 45) -- rot_angle
@@ -20,9 +20,12 @@ let build_test_env [h][w][a]
   9 -- deposit_amount
   2 -- max_density
   trail_map
+  nutrient_map
   agent_xs
   agent_ys
   (map to_rad agent_angs)
+  agent_nuts
+
 
 
 -- Single Step Agent Tests
@@ -60,7 +63,7 @@ entry test_single_step_agent [h][w]
                              (ang: i32)
                              : [3]f32 =
   let blank_map = replicate h (replicate w 0)
-  let agent_list = build_test_env trail_map blank_map [x] [y] [ang] |> simulation_step |> (.agent_list)
+  let agent_list = build_test_env trail_map blank_map [x] [y] [ang] [0] |> simulation_step |> (.agent_list)
   in [agent_list[0].loc.0, agent_list[0].loc.1, agent_list[0].ang |> to_deg |> r32]
 
 -- Single Step Trail Tests
@@ -101,7 +104,7 @@ entry test_single_step_trail [h][w]
                              (ang: i32)
                              : [h][w]f32 =
   let blank_map = replicate h (replicate w 0)
-  let e = simulation_step (build_test_env trail_map blank_map [x] [y] [ang])
+  let e = simulation_step (build_test_env trail_map blank_map [x] [y] [ang] [0])
   in e.trail_map
 
 -- Single Step Density Tests
@@ -128,5 +131,25 @@ entry test_single_step_density [a]
                                (angs: [a]i32)
       : [h][w]i32 =
   let blank_map = replicate h (replicate w 0)
-  let e = simulation_step (build_test_env blank_map blank_map xs ys (angs))
+  let e = simulation_step (build_test_env blank_map blank_map xs ys (angs) (replicate a 0))
   in e.density_map
+
+-- Single Step Nutrient Tests
+-- ==
+-- entry: test_single_step_nutrient
+-- input { [[0f32, 0f32, 0f32]]
+--         [[0f32, 1f32, 2f32]]
+--         0f32 0f32 0i32 0f32 }
+-- output {[1f32, 0f32, 0.707107f32]}
+
+entry test_single_step_nutrient [h][w]
+                                (trail_map: [h][w]f32)
+                                (nutrient_map: [h][w]f32)
+                                (x: f32)
+                                (y: f32)
+                                (ang: i32)
+                                (nut: f32)
+      : [3]f32 =
+  let e = simulation_step (build_test_env trail_map nutrient_map [x] [y] [ang] [nut])
+  let {loc, ang=_, nutrient} = e.agent_list[0]
+  in [loc.0, loc.1, nutrient]
