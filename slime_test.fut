@@ -140,7 +140,24 @@ entry test_single_step_density [a]
 -- input { [[0f32, 0f32, 0f32]]
 --         [[0f32, 1f32, 2f32]]
 --         0f32 0f32 0i32 0f32 }
--- output {[1f32, 0f32, 0.707107f32]}
+-- output {1f32 0f32 0.707107f32}
+-- input { [[0f32, 0f32, 1f32]
+--         ,[0f32, 0f32, 0f32]
+--         ,[0f32, 0f32, 0f32]]
+--         [[0f32, 0f32, 0f32]
+--         ,[0f32, 0f32, 0f32]
+--         ,[1.1f32, 0f32, 0f32]]
+--         0.5f32 0.5f32 -45i32 0.5f32 }
+-- output { 1.5f32 0.5f32 0.353553f32 }
+-- input { [[0f32, 0f32, 1f32]
+--         ,[0f32, 0f32, 0f32]
+--         ,[0f32, 0f32, 0f32]]
+--         [[0f32, 0f32, 0f32]
+--         ,[0f32, 0f32, 0f32]
+--         ,[1.1f32, 0f32, 0f32]]
+--         0.5f32 0.5f32 45i32 0f32 }
+-- output { 0.5f32 1.5f32 0f32 }
+
 
 entry test_single_step_nutrient [h][w]
                                 (trail_map: [h][w]f32)
@@ -149,7 +166,7 @@ entry test_single_step_nutrient [h][w]
                                 (y: f32)
                                 (ang: i32)
                                 (nut: f32)
-      : [3]f32 =
+      : (f32, f32, f32) =
   let e = simulation_step (build_test_env trail_map nutrient_map [x] [y] [ang] [nut])
   let {loc, ang=_, nutrient} = e.agent_list[0]
-  in [loc.0, loc.1, nutrient]
+  in (loc.0, loc.1, nutrient)

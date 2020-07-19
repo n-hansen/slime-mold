@@ -54,15 +54,15 @@ let loc2grid (grid_size: i32)
      then t32 real_loc
      else t32 (bounded gs_f real_loc)
 
-let read_sensor [xn] [yn]
-                (p: model_params)
-                (trail_map: [yn][xn]f32)
+let read_sensor [h][w][a]
+                (e: env[h][w][a])
                 (x: f32, y: f32)
                 (ang: f32)
+                (nutrient: f32)
                 : f32 =
-  let sx = loc2grid xn (f32.cos ang * p.sensor_offset + x)
-  let sy = loc2grid yn (f32.sin ang * p.sensor_offset + y)
-  in trail_map[sy,sx]
+  let sx = loc2grid w (f32.cos ang * e.model_params.sensor_offset + x)
+  let sy = loc2grid h (f32.sin ang * e.model_params.sensor_offset + y)
+  in e.trail_map[sy,sx] + f32.max 0 (e.nutrient_map[sy,sx] - nutrient)
 
 let move_step (h: i32) (w: i32)
               (p: model_params)
@@ -82,9 +82,9 @@ let step_agent [h][w][a]
                (e: env[h][w][a])
                ({loc,ang,nutrient}: agent)
                : (agent, (i32, i32, f32)) =
-  let sl = read_sensor e.model_params e.trail_map loc (ang + e.model_params.sensor_angle)
-  let sf = read_sensor e.model_params e.trail_map loc ang
-  let sr = read_sensor e.model_params e.trail_map loc (ang - e.model_params.sensor_angle)
+  let sl = read_sensor e loc (ang + e.model_params.sensor_angle) nutrient
+  let sf = read_sensor e loc ang nutrient
+  let sr = read_sensor e loc (ang - e.model_params.sensor_angle) nutrient
   let stepped = if sf >= sr && sf >= sl
                 then move_step h w e.model_params {loc, ang, nutrient}
                 else (if sr >= sl
