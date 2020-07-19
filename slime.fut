@@ -83,8 +83,8 @@ let step_agent [h][w]
                       then move_step h w p {loc, ang=ang - p.rot_angle}
                       else move_step h w p {loc, ang=ang + p.rot_angle})
   in if check_density p density_map stepped.loc
-     then (stepped, (t32 loc.0, t32 loc.1, p.deposit_amount))
-     else ({loc,ang=stepped.ang}, (t32 loc.0, t32 loc.1, 0))
+     then (stepped, (t32 stepped.loc.0, t32 stepped.loc.1, p.deposit_amount))
+     else ({loc,ang=stepped.ang, nutrient}, (t32 loc.0, t32 loc.1, 0))
 
 let step_agents [h][w][a]
                 ({model_params, trail_map, density_map, agent_list}: env[h][w][a])
