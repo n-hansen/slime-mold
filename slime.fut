@@ -29,10 +29,43 @@ type env [grid_h][grid_w][n_agents][nutrient_channels] = {
     agent_list: [n_agents]agent[nutrient_channels]
   }
 
--- let diffusion_ker: [9](i32,i32,f32) =
---   let flat = flatten_to 9 (tabulate_2d 3 3 (\x y -> (x-1, y-1, 1 / f32.cosh (r32 ((x-1)**2 + (y-1)**2)))))
---   let total = reduce (+) 0 (map (.2) flat)
---   in map (\(x,y,z) -> (x,y,z/total)) flat
+let gaussian_blur_2d [h][w]
+                     (ker_size: i32)
+                     (arr: [h][w]f32)
+                     : [h][w]f32 =
+  let l = ker_size/2
+  let s = f32.sqrt <| r32 l
+  let s2 = s*s
+  let c = 1 / (s * f32.sqrt f32.pi)
+  let ker = map
+            (\x -> c * f32.exp (-(r32 <| x-l)**2 / s2))
+            (iota ker_size)
+  let blur_x = map (\row ->
+                      map (\col ->
+                             map (\neighbor ->
+                                    let ncol = col + neighbor - l
+                                    let ncol_wrapped = if ncol < 0 then ncol + w
+                                                       else if ncol >= w then ncol - w
+                                                       else ncol
+                                    in ker[neighbor] * arr[row,ncol_wrapped]
+                                 ) (iota ker_size)
+                             |> f32.sum
+                          ) (iota w)
+                   ) (iota h)
+  let blur_y = map (\row ->
+                      map (\col ->
+                             map (\neighbor ->
+                                    let nrow = row + neighbor - l
+                                    let nrow_wrapped = if nrow < 0 then nrow + h
+                                                       else if nrow >= h then nrow - h
+                                                       else nrow
+                                    in ker[neighbor] * blur_x[nrow_wrapped,col]
+                                 ) (iota ker_size)
+                             |> f32.sum
+                          ) (iota w)
+                   ) (iota h)
+  in blur_y
+
 
 let update_nutrient [h][w][a][n]
                     (e: env[h][w][a][n])
@@ -134,27 +167,6 @@ let step_agents [h][w][a][n]
      , agent_list=stepped
      , nutrient_map=e.nutrient_map}
 
-let disperse_cell [h][w]
-                  (p: model_params)
-                  (trail_map: [h][w]f32)
-                  (y: i32) (x: i32)
-                  : f32 =
-  let bdd m x = if x < m && x >= 0 then x else (x+m) i32.% h
-  let neighbors = map (\(dx,dy,wt) -> wt * trail_map[bdd h (y+dy),
-                                                     bdd w (x+dx)]
-                      ) [(-1i32, -1i32, 5.709514e-2f32),
-                         (-1i32, 0i32, 0.13920408f32),
-                         (-1i32, 1i32, 5.709514e-2f32),
-                         (0i32, -1i32, 0.13920408f32),
-                         (0i32, 0i32, 0.21480311f32),
-                         (0i32, 1i32, 0.13920408f32),
-                         (1i32, -1i32, 5.709514e-2f32),
-                         (1i32, 0i32, 0.13920408f32),
-                         (1i32, 1i32, 5.709514e-2f32)]
-
-  let sum = reduce (+) 0 neighbors
-  in p.trail_decay * sum
-
 let disperse_trail [h][w][a][n]
                    ({model_params, trail_map, density_map, nutrient_map, agent_list}: env[h][w][a][n])
                    : env[h][w][a][n] =
@@ -162,8 +174,10 @@ let disperse_trail [h][w][a][n]
   , agent_list
   , density_map
   , nutrient_map
-  , trail_map=tabulate_2d h w (disperse_cell model_params trail_map)}
-
+  , trail_map= trail_map
+               |> map (map (\x -> model_params.trail_decay * x))
+               |> gaussian_blur_2d 3
+  }
 
 -- Library API
 

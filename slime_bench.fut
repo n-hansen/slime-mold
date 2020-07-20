@@ -6,9 +6,11 @@ let bench_env [h][w][a]
               (agent_x: [a]f32)
               (agent_y: [a]f32)
               (agent_a: [a]f32)
-              : env[h][w][a] =
+              : env[h][w][a][1] =
   init
   0.9
+  0.1
+  0.1
   (f32.pi/4)
   3
   (f32.pi/8)
@@ -16,11 +18,11 @@ let bench_env [h][w][a]
   1
   3
   trail_map
-  (replicate h (replicate w 0))
+  (replicate h (replicate w [0]))
   agent_x
   agent_y
   agent_a
-  (replicate a 0)
+  (replicate a [0])
 
 -- Run simulation
 -- ==
@@ -35,4 +37,4 @@ let main (n: i32)
          : f32 =
   let e = bench_env trail_map ax ay aa
   let result = run_simulation n e
-  in result.agent_list[0].nutrient / result.agent_list[0].loc.0
+  in (copy result.agent_list[0].nutrient)[0]
