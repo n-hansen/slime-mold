@@ -3,6 +3,7 @@ import numpy as np
 import math
 import pygame
 import time
+import os
 from collections import OrderedDict
 
 
@@ -94,6 +95,14 @@ class Simulation:
     def render_frame(self):
         return self.slime.render_frame(self.env).get()
 
+    def render_trail(self):
+        f = self.slime.render_trail(self.env).get()
+        return np.int32(f * 255)
+
+    def render_density(self):
+        f = self.slime.render_trail(self.env).get()
+        return np.int32(f * 255) << 8
+
     def agent_density(self):
         return self.slime.get_agent_density(self.env).get()
 
@@ -103,15 +112,13 @@ class SlimeQuit(Exception):
 
 
 class GUI:
-    def __init__(self, grid_size, render_diagnostics=False, dump_images=None):
+    def __init__(self, grid_size, render_diagnostics=False):
         self.render_diagnostics = render_diagnostics
+        self.render_mode = "nutrient"
         self.grid_size = grid_size
         self.sim = Simulation(grid_size, 0.08)
         self.selected_param = next(iter(self.sim.params.keys()))
-        if dump_images:
-            self.dump_images = [0, dump_images]
-        else:
-            self.dump_images = None
+        self.dump_images = None
 
     def run(self):
         pygame.init()
@@ -143,7 +150,7 @@ class GUI:
         if self.render_diagnostics:
             where = [5, 5]
             line_pad = 5
-            line = "Rendered in {:.2f} ms".format(diff_ms)
+            line = "Rendered {} in {:.2f} ms".format(self.render_mode, diff_ms)
             self.show_text(line, where)
             where[1] += self.font.size(line)[1] + line_pad
 
@@ -163,7 +170,14 @@ class GUI:
 
     def new_frame(self):
         self.sim.single_step()
-        frame = self.sim.render_frame()
+        if self.render_mode == "nutrient":
+            frame = self.sim.render_frame()
+        elif self.render_mode == "trail":
+            frame = self.sim.render_trail()
+        elif self.render_mode == "density":
+            frame = self.sim.render_density()
+        else:
+            1 / 0
         # ad = self.sim.agent_density()
         # frame = np.int32(np.clip(255 * tm, 0, 255)) << 16
         # frame = frame + np.int32(np.clip((25 * ad), 0, 255))
@@ -198,11 +212,25 @@ class GUI:
                     self.sim.adjust_param(self.selected_param, -1)
                 elif event.key == pygame.K_l:
                     self.sim.adjust_param(self.selected_param, 1)
+                elif event.key == pygame.K_m:
+                    if self.render_mode == "nutrient":
+                        self.render_mode = "trail"
+                    elif self.render_mode == "trail":
+                        self.render_mode = "density"
+                    else:
+                        self.render_mode = "nutrient"
+                elif event.key == pygame.K_r:
+                    if self.dump_images:
+                        self.dump_images = None
+                    else:
+                        d = f"img/{time.monotonic()}/"
+                        os.mkdir(d)
+                        self.dump_images = [0, d + "{:04d}.png"]
 
 
 if __name__ == "__main__":
     g = GUI(
-        800,
+        500,
         # render_diagnostics=False,
         # dump_images="img/{:04d}.png"
     )

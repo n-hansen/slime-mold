@@ -260,19 +260,20 @@ entry update_params [h][w][a][n]
   }
 
 
-let render_trail [h][w][a][n]
+entry render_trail [h][w][a][n]
                    (e: env[h][w][a][n])
                    : [h][w]f32 =
   map (
     map (\t -> f32.min 1 t)
   ) e.trail_map
 
-let render_density [h][w][a][n]
+entry render_density [h][w][a][n]
                    (e: env[h][w][a][n])
                    : [h][w]f32 =
   map (
     map (\d -> r32 d / r32 e.model_params.max_density)
   ) e.density_map
+  |> gaussian_blur_2d 5
 
 let render_nutrient [h][w][a][n]
                     (e: env[h][w][a][n])
@@ -297,14 +298,17 @@ entry render_frame [h][w][a]
                    (e: env[h][w][a][3])
       : [h][w]i32 =
   let rss = render_nutrient e [255,0,0] [0,0,0]
+            |> gaussian_blur_2d 5
   let gss = render_nutrient e [0,255,0] [0,0,0]
+            |> gaussian_blur_2d 5
   let bss = render_nutrient e [0,0,255] [0,0,0]
+            |> gaussian_blur_2d 5
   in map3 (
        \rs gs bs ->
          map3 (
-           \r g b -> (t32 r << 16) +
-                     (t32 g << 8) +
-                     (t32 b) + 0
+           \r g b -> (t32 (f32.min 255 <| f32.max 0 r) << 16) +
+                     (t32 (f32.min 255 <| f32.max 0 g) << 8) +
+                     (t32 (f32.min 255 <| f32.max 0 b)) + 0
 
          ) rs gs bs
      ) rss gss bss
