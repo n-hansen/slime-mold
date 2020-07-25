@@ -1,16 +1,21 @@
-type model_params = {
+type dependent_f32 [n] = {
+    const: [n]f32,
+    slope: [n]f32
+  }
+
+type model_params [n] = {
     -- environment parameters
     trail_decay: f32,
     nutrient_decay: f32,
     nutrient_attr: f32,
 
     -- agent parameters
-    sensor_angle: f32,
-    sensor_offset: f32,
+    sensor_angle: dependent_f32[n],
+    sensor_offset: dependent_f32[n],
     -- sensor_width: i32,
-    rot_angle: f32,
-    step_size: f32,
-    deposit_amount: f32,
+    rot_angle: dependent_f32[n],
+    step_size: dependent_f32[n],
+    deposit_amount: dependent_f32[n],
     max_density: i32
     -- angle_jitter: f32
   }
@@ -22,12 +27,25 @@ type agent [n] = {
   }
 
 type env [grid_h][grid_w][n_agents][nutrient_channels] = {
-    model_params: model_params,
+    model_params: model_params[nutrient_channels],
     trail_map: [grid_h][grid_w]f32,
     density_map: [grid_h][grid_w]i32,
     nutrient_map: [grid_h][grid_w][nutrient_channels]f32,
     agent_list: [n_agents]agent[nutrient_channels]
   }
+
+let const_param [n]
+                (x: f32)
+                : dependent_f32[n] =
+  {const=concat_to n [x] (replicate (n-1) 0), slope=replicate n 0}
+
+let realize_param [n]
+                  (nutrient: [n]f32)
+                  (param: dependent_f32[n])
+                  : f32 =
+  f32.sum (
+    map3 f32.mad nutrient param.slope param.const
+  )
 
 let gaussian_blur_2d [h][w]
                      (ker_size: i32)
@@ -96,8 +114,8 @@ let read_sensor [h][w][a][n]
                 ({loc=(x,y), ang, nutrient}: agent[n])
                 (ang_offset: f32)
                 : f32 =
-  let sx = loc2grid w (f32.cos (ang + ang_offset) * e.model_params.sensor_offset + x)
-  let sy = loc2grid h (f32.sin (ang + ang_offset) * e.model_params.sensor_offset + y)
+  let sx = loc2grid w (f32.cos (ang + ang_offset) * realize_param nutrient e.model_params.sensor_offset + x)
+  let sy = loc2grid h (f32.sin (ang + ang_offset) * realize_param nutrient e.model_params.sensor_offset + y)
   in if sx < 5
         || sx >= w-5
         || sy < 5
@@ -111,14 +129,15 @@ let read_sensor [h][w][a][n]
 
 let move_step [n]
               (h: i32) (w: i32)
-              (p: model_params)
+              (p: model_params[n])
               ({loc=(x, y), ang, nutrient} : agent[n])
               : agent[n] =
-  let x_ = bounded (r32 w) <| x + p.step_size * f32.cos ang
-  let y_ = bounded (r32 h) <| y + p.step_size * f32.sin ang
+  let x_ = bounded (r32 w) <| x + realize_param nutrient p.step_size * f32.cos ang
+  let y_ = bounded (r32 h) <| y + realize_param nutrient p.step_size * f32.sin ang
   in {loc=(x_, y_), ang, nutrient}
 
-let check_density (p: model_params)
+let check_density [n]
+                  (p: model_params[n])
                   (density_map: [][]i32)
                   (x,y)
                   : bool =
@@ -128,19 +147,21 @@ let step_agent [h][w][a][n]
                (e: env[h][w][a][n])
                (a: agent[n])
                : (agent[n], (i32, i32, f32)) =
-  let sl = read_sensor e a e.model_params.sensor_angle
+  let sl = read_sensor e a <| realize_param a.nutrient e.model_params.sensor_angle
   let sf = read_sensor e a 0
-  let sr = read_sensor e a (-e.model_params.sensor_angle)
+  let sr = read_sensor e a (f32.negate <| realize_param a.nutrient e.model_params.sensor_angle)
   let stepped = if sf >= sr && sf >= sl
                 then move_step h w e.model_params a
-                else (if sr >= sl
-                      then move_step h w e.model_params {loc=a.loc, ang=a.ang - e.model_params.rot_angle, nutrient=a.nutrient}
-                      else move_step h w e.model_params {loc=a.loc, ang=a.ang + e.model_params.rot_angle, nutrient=a.nutrient})
+                else move_step h w e.model_params {
+                                 loc=a.loc,
+                                 ang=a.ang + (f32.sgn <| sl - sr) * realize_param a.nutrient e.model_params.rot_angle,
+                                 nutrient=a.nutrient
+                               }
   in if check_density e.model_params e.density_map stepped.loc
      then ( update_nutrient e stepped
           , (t32 stepped.loc.0
             , t32 stepped.loc.1
-            , e.model_params.deposit_amount
+            , realize_param stepped.nutrient e.model_params.deposit_amount
             )
           )
      else ( update_nutrient e {loc=a.loc,ang=stepped.ang, nutrient=a.nutrient}
@@ -213,11 +234,11 @@ entry init [h][w][a][n]
   { model_params = { trail_decay
                    , nutrient_decay
                    , nutrient_attr
-                   , sensor_angle
-                   , sensor_offset
-                   , rot_angle
-                   , step_size
-                   , deposit_amount
+                   , sensor_angle=const_param sensor_angle
+                   , sensor_offset=const_param sensor_offset
+                   , rot_angle=const_param rot_angle
+                   , step_size=const_param step_size
+                   , deposit_amount=const_param deposit_amount
                    , max_density
                    }
   , trail_map
@@ -246,11 +267,11 @@ entry update_params [h][w][a][n]
   { model_params = { trail_decay
                    , nutrient_decay
                    , nutrient_attr
-                   , sensor_angle
-                   , sensor_offset
-                   , rot_angle
-                   , step_size
-                   , deposit_amount
+                   , sensor_angle=const_param sensor_angle
+                   , sensor_offset=const_param sensor_offset
+                   , rot_angle=const_param rot_angle
+                   , step_size=const_param step_size
+                   , deposit_amount=const_param deposit_amount
                    , max_density
                    }
   , trail_map=e.trail_map
