@@ -22,7 +22,7 @@ bench: bench_input slime_bench.fut
 #> echo 'Benchmarking C...'
 #> cat bench_input | build/slime_bench-c -t /dev/stderr  > /dev/null
 > echo 'Benchmarking OpenCL...'
-> futhark bench slime_bench.fut --backend=opencl
+> futhark bench slime_bench.fut -r 60 --backend=opencl
 
 requirements.txt: requirements.in
 > . venv/bin/activate
